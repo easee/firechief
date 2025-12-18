@@ -21,13 +21,14 @@ jobs:
 
       - name: Create appsettings.json from secrets
         run: |
-          cat > WorkflowBot/appsettings.json << EOF
+          cat > src/appsettings.json << EOF
           {
             "Logging": {
               "LogLevel": {
                 "Default": "Information",
                 "Microsoft": "Warning",
-                "Microsoft.Hosting.Lifetime": "Information"
+                "Microsoft.Hosting.Lifetime": "Information",
+                "System.Net.Http.HttpClient": "Warning"
               }
             },
             "FireChief": {
@@ -43,12 +44,12 @@ jobs:
 
       - name: Restore dependencies
         run: dotnet restore
-        working-directory: WorkflowBot
+        working-directory: src
 
       - name: Build
         run: dotnet build --no-restore --configuration Release
-        working-directory: WorkflowBot
+        working-directory: src
 
       - name: Run assignment
         run: dotnet run --no-build --configuration Release -- assign
-        working-directory: WorkflowBot
+        working-directory: src
