@@ -1,0 +1,54 @@
+name: Fire Chief - Monday Assignment
+
+on:
+  schedule:
+    # Run every Monday at 8:00 AM UTC
+    - cron: '0 8 * * 1'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  assign:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Create appsettings.json from secrets
+        run: |
+          cat > WorkflowBot/appsettings.json << EOF
+          {
+            "Logging": {
+              "LogLevel": {
+                "Default": "Information",
+                "Microsoft": "Warning",
+                "Microsoft.Hosting.Lifetime": "Information"
+              }
+            },
+            "FireChief": {
+              "NotionToken": "${{ secrets.NOTION_TOKEN }}",
+              "TeamDatabaseId": "${{ secrets.TEAM_DATABASE_ID }}",
+              "RosterDatabaseId": "${{ secrets.ROSTER_DATABASE_ID }}",
+              "SlackBotToken": "${{ secrets.SLACK_BOT_TOKEN }}",
+              "SlackInternalChannelId": "${{ secrets.SLACK_INTERNAL_CHANNEL_ID }}",
+              "SlackPublicChannelId": "${{ secrets.SLACK_PUBLIC_CHANNEL_ID }}"
+            }
+          }
+          EOF
+
+      - name: Restore dependencies
+        run: dotnet restore
+        working-directory: WorkflowBot
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+        working-directory: WorkflowBot
+
+      - name: Run assignment
+        run: dotnet run --no-build --configuration Release -- assign
+        working-directory: WorkflowBot

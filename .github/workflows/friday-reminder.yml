@@ -1,0 +1,54 @@
+name: Fire Chief - Friday Reminder
+
+on:
+  schedule:
+    # Run every Friday at 3:00 PM UTC
+    - cron: '0 15 * * 5'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Create appsettings.json from secrets
+        run: |
+          cat > WorkflowBot/appsettings.json << EOF
+          {
+            "Logging": {
+              "LogLevel": {
+                "Default": "Information",
+                "Microsoft": "Warning",
+                "Microsoft.Hosting.Lifetime": "Information"
+              }
+            },
+            "FireChief": {
+              "NotionToken": "${{ secrets.NOTION_TOKEN }}",
+              "TeamDatabaseId": "${{ secrets.TEAM_DATABASE_ID }}",
+              "RosterDatabaseId": "${{ secrets.ROSTER_DATABASE_ID }}",
+              "SlackBotToken": "${{ secrets.SLACK_BOT_TOKEN }}",
+              "SlackInternalChannelId": "${{ secrets.SLACK_INTERNAL_CHANNEL_ID }}",
+              "SlackPublicChannelId": "${{ secrets.SLACK_PUBLIC_CHANNEL_ID }}"
+            }
+          }
+          EOF
+
+      - name: Restore dependencies
+        run: dotnet restore
+        working-directory: WorkflowBot
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+        working-directory: WorkflowBot
+
+      - name: Run Friday reminder
+        run: dotnet run --no-build --configuration Release -- remind-friday
+        working-directory: WorkflowBot

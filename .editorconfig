@@ -1,0 +1,311 @@
+# EditorConfig file for shared formatting across JetBrains Rider, Visual Studio, and VS Code
+# This file enforces consistent code style with Microsoft .NET recommendations
+# - Allman style: braces on new lines
+# - No trailing commas
+# - Tab indentation
+# - Test files use Snake_case naming for business context readability
+# - Explicit types for non-obvious return types, but var when type is clearly apparent
+# - 150 character line width with smart parameter/argument wrapping (every parameter on new line when wrapping)
+# - Primary constructor parameters wrap based on total line length including attributes
+
+# https://editorconfig.org
+root = true
+
+#######################################
+# All files
+#######################################
+[*]
+charset = utf-8
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = tab
+end_of_line = crlf
+
+#######################################
+# C# files
+#######################################
+[*.cs]
+
+# New line preferences - Allman style (braces on new lines) - Microsoft .NET recommendation
+csharp_new_line_before_open_brace = all
+csharp_new_line_before_else = true
+csharp_new_line_before_catch = true
+csharp_new_line_before_finally = true
+csharp_new_line_before_members_in_object_initializers = true
+csharp_new_line_before_members_in_anonymous_types = true
+csharp_new_line_between_query_expression_clauses = true
+
+# Indentation preferences
+csharp_indent_case_contents = true
+csharp_indent_switch_labels = true
+csharp_indent_labels = no_change
+csharp_indent_block_contents = true
+csharp_indent_braces = false
+csharp_indent_case_contents_when_block = true
+
+# Space preferences
+csharp_space_after_cast = false
+csharp_space_after_keywords_in_control_flow_statements = true
+csharp_space_between_method_call_parameter_list_parentheses = false
+csharp_space_between_method_declaration_parameter_list_parentheses = false
+csharp_space_between_parentheses = false
+csharp_space_before_colon_in_inheritance_clause = true
+csharp_space_after_colon_in_inheritance_clause = true
+csharp_space_around_binary_operators = before_and_after
+csharp_space_around_declaration_statements = false
+csharp_space_before_open_square_brackets = false
+csharp_space_between_empty_square_brackets = false
+csharp_space_between_square_brackets = false
+
+# Wrapping preferences
+csharp_preserve_single_line_statements = false
+csharp_preserve_single_line_blocks = true
+
+# Trailing commas - DISABLED (no trailing commas)
+csharp_trailing_comma = never
+
+# Code block preferences
+csharp_prefer_braces = true:silent
+
+# var preferences - Balance between explicit types and var for readability
+# Rule 1: Built-in types (int, string, bool) - require explicit types for clarity
+# Example: int x = 5;  (not: var x = 5;)
+csharp_style_var_for_built_in_types = false:warning
+
+# Rule 2: When type is apparent on RHS - allow var for cleaner code
+# The type is explicitly shown on the right-hand side, so var improves readability without losing information
+# Examples where var is GOOD (type is clear):
+#   - var obj = new DateTime();                    // Type on RHS
+#   - var today = DateTime.UtcNow.Date;            // DateTime is evident
+#   - var customer = new Customer();               // Customer is evident
+# Examples where explicit type is NEEDED (type NOT clear):
+#   - ILogger logger = factory.CreateLogger();     // Factory method return type isn't obvious
+#   - var query = items.Where(x => x.Active);     // LINQ query result needs explicit type annotation
+csharp_style_var_when_type_is_apparent = true:suggestion
+
+# Rule 3: Complex/generic types elsewhere - require explicit types to prevent hidden type changes
+# Example: Use "List<Order> orders = ..." not "var orders = ..."
+csharp_style_var_elsewhere = false:warning
+
+# Expression-bodied members
+csharp_style_expression_bodied_methods = true:silent
+csharp_style_expression_bodied_constructors = true:silent
+csharp_style_expression_bodied_operators = true:silent
+csharp_style_expression_bodied_properties = true:silent
+csharp_style_expression_bodied_indexers = true:silent
+csharp_style_expression_bodied_accessors = true:silent
+
+# Pattern matching preferences
+csharp_style_pattern_matching_over_as_with_null_check = true:suggestion
+csharp_style_pattern_matching_over_is_with_null_check = true:suggestion
+
+# Null-checking preferences
+csharp_style_conditional_delegate_call = true:suggestion
+
+# Modifier preferences
+csharp_prefer_static_local_function = true:suggestion
+csharp_preferred_modifier_order = public,private,protected,internal,static,extern,new,virtual,abstract,sealed,override,readonly,unsafe,volatile,async:suggestion
+
+# Expression-level preferences
+csharp_prefer_simple_using_statement = true:suggestion
+csharp_style_throw_expression = true:suggestion
+csharp_style_prefer_null_coalescing = true:suggestion
+csharp_style_prefer_index_operator = true:suggestion
+csharp_style_prefer_range_operator = true:suggestion
+csharp_style_implicit_object_creation_when_type_is_apparent = true:suggestion
+csharp_style_prefer_tuple_swap = true:suggestion
+
+# Line breaking and wrapping preferences
+# Maximum line length: 150 characters
+# When a line exceeds this, it triggers automatic wrapping/chopping
+max_line_length = 150
+csharp_max_line_length = 150
+
+# Method parameter wrapping (function definitions)
+# chop_if_long: Wrap parameters when declaration line exceeds 150 characters
+# When wrapping is triggered, EVERY parameter gets its own line (including the first)
+# wrap_after_declaration_lpar = true: First parameter starts on new line after opening parenthesis
+# This creates consistent, easy-to-read parameter lists
+# Example: When wrapping is needed, first parameter is on new line:
+#   public void MyMethod(
+#       int parameter1,
+#       string parameter2,
+#       bool parameter3)
+#   {
+#   }
+csharp_wrap_parameters_style = chop_if_long
+csharp_wrap_before_declaration_lpar = false
+csharp_wrap_after_declaration_lpar = true
+
+# Method invocation argument wrapping (function calls)
+# chop_if_long: Wrap arguments when call line exceeds 150 characters
+# When wrapping is triggered, EVERY argument gets its own line (including the first)
+# wrap_after_invocation_lpar = true: First argument starts on new line after opening parenthesis
+# This maintains consistency with method declaration wrapping
+# Example: When wrapping is needed, first argument is on new line:
+#   var result = myObject.CallMethod(
+#       argument1,
+#       argument2,
+#       argument3);
+csharp_wrap_arguments_style = chop_if_long
+csharp_wrap_after_invocation_lpar = true
+
+# Primary constructor parameter wrapping (records and classes with C# 12+ primary constructors)
+# chop_if_long: Wrap parameters when the declaration line exceeds 150 characters
+# IMPORTANT: Attributes on parameters (like [property: JsonPropertyName("x")]) are counted as part of line length
+# When wrapping is triggered, each parameter with its attributes goes on a new line
+# wrap_after_primary_constructor_declaration_lpar = true: First parameter on new line after opening paren
+# Example - short declaration (no wrapping needed):
+#   public record Person(string Name, int Age);
+# Example - with attributes that exceed 150 chars (wrapping IS triggered):
+#   public record SlackRequest(
+#       [property: JsonPropertyName("channel")] string Channel,
+#       [property: JsonPropertyName("text")] string Text)
+# NOTE: Attributes add to line length calculation, so a short parameter name with a long attribute
+# can trigger wrapping. The line: `[property: JsonPropertyName("channel")] string Channel` is ~55 chars,
+# so if the full declaration exceeds 150 chars total, all parameters wrap to new lines.
+csharp_wrap_primary_constructor_parameters_style = chop_if_long
+csharp_wrap_after_primary_constructor_declaration_lpar = true
+csharp_wrap_before_primary_constructor_declaration_rpar = false
+
+#######################################
+# .NET code quality rules
+#######################################
+[*.{cs,vb}]
+# Naming conventions
+dotnet_naming_rule.interfaces_should_be_begins_with_i.severity = suggestion
+dotnet_naming_rule.interfaces_should_be_begins_with_i.symbols = interface
+dotnet_naming_rule.interfaces_should_be_begins_with_i.style = begins_with_i
+
+dotnet_naming_rule.types_should_be_pascal_case.severity = suggestion
+dotnet_naming_rule.types_should_be_pascal_case.symbols = types
+dotnet_naming_rule.types_should_be_pascal_case.style = pascal_case
+
+dotnet_naming_rule.non_field_members_should_be_pascal_case.severity = suggestion
+dotnet_naming_rule.non_field_members_should_be_pascal_case.symbols = non_field_members
+dotnet_naming_rule.non_field_members_should_be_pascal_case.style = pascal_case
+
+# Symbol specifications
+dotnet_naming_symbols.interface.applicable_kinds = interface
+dotnet_naming_symbols.interface.applicable_accessibilities = public, internal, private, protected, protected_internal, private_protected
+dotnet_naming_symbols.interface.required_modifiers =
+
+dotnet_naming_symbols.types.applicable_kinds = class, struct, interface, enum
+dotnet_naming_symbols.types.applicable_accessibilities = public, internal, private, protected, protected_internal, private_protected
+dotnet_naming_symbols.types.required_modifiers =
+
+dotnet_naming_symbols.non_field_members.applicable_kinds = property, event, method
+dotnet_naming_symbols.non_field_members.applicable_accessibilities = public, internal, private, protected, protected_internal, private_protected
+dotnet_naming_symbols.non_field_members.required_modifiers =
+
+# Naming styles
+dotnet_naming_style.pascal_case.required_prefix =
+dotnet_naming_style.pascal_case.required_suffix =
+dotnet_naming_style.pascal_case.word_separator =
+dotnet_naming_style.pascal_case.capitalization = pascal_case
+
+dotnet_naming_style.begins_with_i.required_prefix = I
+dotnet_naming_style.begins_with_i.required_suffix =
+dotnet_naming_style.begins_with_i.word_separator =
+dotnet_naming_style.begins_with_i.capitalization = pascal_case
+
+# this. preferences
+dotnet_style_qualification_for_field = false:silent
+dotnet_style_qualification_for_property = false:silent
+dotnet_style_qualification_for_method = false:silent
+dotnet_style_qualification_for_event = false:silent
+
+# Language keywords vs BCL types preferences
+dotnet_style_predefined_type_for_locals_parameters_members = true:silent
+dotnet_style_predefined_type_for_member_access = true:silent
+
+# Parentheses preferences
+dotnet_style_parentheses_in_arithmetic_binary_operators = always_for_clarity:silent
+dotnet_style_parentheses_in_other_binary_operators = always_for_clarity:silent
+dotnet_style_parentheses_in_relational_binary_operators = always_for_clarity:silent
+dotnet_style_parentheses_in_other_operators = never_if_unnecessary:silent
+
+# null-checking preferences
+dotnet_style_coalesce_expression = true:suggestion
+dotnet_style_null_coalescing_operator = true:suggestion
+dotnet_style_null_checking_preferences_for_reference_types = true:suggestion
+
+#######################################
+# XML project files
+#######################################
+[*.{csproj,vbproj,proj,projitems,shproj}]
+indent_style = space
+indent_size = 2
+
+#######################################
+# XML configuration files
+#######################################
+[*.{xml,config,props,targets}]
+indent_style = space
+indent_size = 2
+
+#######################################
+# JSON files
+#######################################
+[*.json]
+indent_style = space
+indent_size = 2
+
+#######################################
+# YAML files
+#######################################
+[*.{yml,yaml}]
+indent_style = space
+indent_size = 2
+
+#######################################
+# Rider-specific extensions (for JetBrains Rider)
+#######################################
+[*.cs]
+# Rider-specific brace styles - Allman style (braces on new lines)
+resharper_csharp_brace_style = allman
+resharper_type_declaration_braces = allman
+resharper_invocable_declaration_braces = allman
+resharper_accessor_owner_declaration_braces = allman
+resharper_accessor_declaration_braces = allman
+resharper_case_block_braces = allman
+resharper_initializer_braces = allman
+
+# Rider-specific trailing comma preferences
+resharper_trailing_comma = never
+
+# Rider-specific line breaking (aliases for csharp_ settings above)
+resharper_max_line_length = 150
+resharper_wrap_parameters_style = chop_if_long
+resharper_wrap_after_declaration_lpar = true
+resharper_wrap_arguments_style = chop_if_long
+resharper_wrap_after_invocation_lpar = true
+
+# Rider-specific primary constructor wrapping
+resharper_wrap_primary_constructor_parameters_style = chop_if_long
+resharper_wrap_after_primary_constructor_declaration_lpar = true
+resharper_wrap_before_primary_constructor_declaration_rpar = false
+
+#######################################
+# Test files - Snake_case naming for business context readability
+#######################################
+[*Tests.cs]
+
+# Override the default PascalCase rule for test files to use Snake_case
+# This makes test method names read like specifications: Assert_that_two_plus_two_is_four()
+dotnet_naming_rule.test_methods_should_be_snake_case.severity = suggestion
+dotnet_naming_rule.test_methods_should_be_snake_case.symbols = test_methods
+dotnet_naming_rule.test_methods_should_be_snake_case.style = snake_case_style
+
+# Symbol specifications for test files - methods and local functions
+dotnet_naming_symbols.test_methods.applicable_kinds = method, local_function
+dotnet_naming_symbols.test_methods.applicable_accessibilities = *
+dotnet_naming_symbols.test_methods.required_modifiers =
+
+# Naming style for tests: Snake_case
+# Capitalization = first_word_upper: First letter uppercase, rest lowercase, underscores between words
+# Example: Assert_that_two_plus_two_is_four
+dotnet_naming_style.snake_case_style.required_prefix =
+dotnet_naming_style.snake_case_style.required_suffix =
+dotnet_naming_style.snake_case_style.word_separator = _
+dotnet_naming_style.snake_case_style.capitalization = first_word_upper
