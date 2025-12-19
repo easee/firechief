@@ -30,6 +30,7 @@ Fire Chief is a **weekly support rotation role** where one team member acts as t
 - [Fire Chief Concept](./docs/concept.md) – Understanding the role and responsibilities
 - [Setup Guide](./docs/setup.md) - Initial configuration and deployment
 - [Usage Guide](./docs/usage.md) - Day-to-day operations and troubleshooting
+- [Local Development Guide](./docs/development.md) – Setting up and testing locally
 
 ### Resources
 
