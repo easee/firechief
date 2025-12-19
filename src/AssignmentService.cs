@@ -22,26 +22,50 @@ public sealed partial class AssignmentService(
 
 		// Check for the existing roster
 		Result<RosterEntry?> existingResult = await notion.GetRosterForWeekAsync(nextMonday);
-		if (existingResult.IsFailure)
-			return Result.Failure<AssignmentOutcome>(existingResult.Error);
 
-		if (existingResult.Value is not null)
+		return existingResult switch
 		{
-			LogRosterAlreadyExists(nextMonday);
-			return Result.Success<AssignmentOutcome>(new AssignmentAlreadyExists(nextMonday));
-		}
+			{ IsFailure: true, Error: var error } => Result.Failure<AssignmentOutcome>(error),
+			{ IsSuccess: true, Value: not null } =>
+				Result.Success<AssignmentOutcome>(new AssignmentAlreadyExists(nextMonday)).Tap(() => LogRosterAlreadyExists(nextMonday)),
 
+			_ => await ContinueAssignmentWorkflowAsync(nextMonday)
+		};
+	}
+
+	private async Task<Result<AssignmentOutcome>> ContinueAssignmentWorkflowAsync(DateTime nextMonday)
+	{
 		// Get active members
 		Result<List<TeamMember>> membersResult = await notion.GetActiveMembersAsync();
-		if (membersResult.IsFailure)
-			return Result.Failure<AssignmentOutcome>(membersResult.Error);
 
+		return membersResult switch
+		{
+			{ IsFailure: true, Error: var error } => Result.Failure<AssignmentOutcome>(error),
+			{ IsSuccess: true, Value: var members } => await ProcessMemberSelectionAsync(members, nextMonday),
+
+			_ => throw new InvalidOperationException("Result must be either Success or Failure")
+		};
+	}
+
+	private async Task<Result<AssignmentOutcome>> ProcessMemberSelectionAsync(List<TeamMember> members, DateTime nextMonday)
+	{
 		// Select chief and backup
-		Result<(TeamMember chief, TeamMember backup)> selectionResult = SelectChiefAndBackup(membersResult.Value);
-		if (selectionResult.IsFailure)
-			return Result.Failure<AssignmentOutcome>(selectionResult.Error);
+		Result<(TeamMember chief, TeamMember backup)> selectionResult = SelectChiefAndBackup(members);
 
-		(TeamMember chief, TeamMember backup) = selectionResult.Value;
+		return selectionResult switch
+		{
+			{ IsFailure: true, Error: var error } => Result.Failure<AssignmentOutcome>(error),
+			{ IsSuccess: true, Value: var (chief, backup) } => await CreateAndNotifyAssignmentAsync(chief, backup, nextMonday),
+
+			_ => throw new InvalidOperationException("Result must be either Success or Failure")
+		};
+	}
+
+	private async Task<Result<AssignmentOutcome>> CreateAndNotifyAssignmentAsync(
+		TeamMember chief,
+		TeamMember backup,
+		DateTime nextMonday)
+	{
 		LogSelectedChiefAndBackup(chief.Name, backup.Name);
 
 		AssignmentResult assignment = new(chief, backup, nextMonday);
@@ -58,26 +82,35 @@ public sealed partial class AssignmentService(
 		);
 
 		Result<string> createResult = await notion.CreateRosterEntryAsync(entry);
-		if (createResult.IsFailure)
-			return Result.Failure<AssignmentOutcome>(createResult.Error);
 
-		string rosterId = createResult.Value;
+		return createResult switch
+		{
+			{ IsFailure: true, Error: var error } => Result.Failure<AssignmentOutcome>(error),
+			{ IsSuccess: true, Value: var rosterId } => await FinalizeAssignmentAsync(assignment, rosterId, nextMonday),
 
+			_ => throw new InvalidOperationException("Result must be either Success or Failure")
+		};
+	}
+
+	private async Task<Result<AssignmentOutcome>> FinalizeAssignmentAsync(
+		AssignmentResult assignment,
+		string rosterId,
+		DateTime nextMonday)
+	{
 		// Update chief's last assignment date
-		Result updateResult = await notion.UpdateLastChiefDateAsync(chief.Id, nextMonday);
+		Result updateResult = await notion.UpdateLastChiefDateAsync(assignment.Chief.Id, nextMonday);
 		if (updateResult.IsFailure)
 			LogFailedToUpdateChiefDate(updateResult.Error);
 
 		// Send notifications and pin them, then store timestamps
 		Result<(string publicTs, string internalTs)> notificationResult = await SendNotificationsAsync(assignment);
-		if (notificationResult.IsFailure)
+		if (notificationResult.IsSuccess)
 		{
-			LogFailedToSendNotifications(notificationResult.Error);
+			await notion.UpdateRosterMessageTimestampsAsync(rosterId, notificationResult.Value.publicTs, notificationResult.Value.internalTs);
 		}
 		else
 		{
-			// Store message timestamps in Notion for future unpinning
-			await notion.UpdateRosterMessageTimestampsAsync(rosterId, notificationResult.Value.publicTs, notificationResult.Value.internalTs);
+			LogFailedToSendNotifications(notificationResult.Error);
 		}
 
 		LogAssignmentWorkflowCompleted();
@@ -90,36 +123,53 @@ public sealed partial class AssignmentService(
 	public async Task<Result> RunFridayReminderAsync()
 	{
 		LogStartingFridayReminderWorkflow();
-
 		DateTime thisMonday = CalculateThisMonday();
-
 		Result<RosterEntry?> rosterResult = await notion.GetRosterForWeekAsync(thisMonday);
-		if (rosterResult.IsFailure)
-			return Result.Failure(rosterResult.Error);
 
-		if (rosterResult.Value is not { } roster)
+		return rosterResult switch
 		{
-			LogNoRosterFoundForCurrentWeek(thisMonday);
-			return Result.Failure("No roster found for current week");
-		}
+			{ IsFailure: true, Error: var error } => Result.Failure(error),
+			{ IsSuccess: true, Value: null } => Result.Failure("No roster found for current week")
+				.Tap(() => LogNoRosterFoundForCurrentWeek(thisMonday)),
+			{ IsSuccess: true, Value: var roster } => await SendReminderToChiefAsync(roster),
 
+			_ => throw new InvalidOperationException("Result must be either Success or Failure")
+		};
+	}
+
+	private async Task<Result> SendReminderToChiefAsync(RosterEntry roster)
+	{
 		Result<List<TeamMember>> membersResult = await notion.GetActiveMembersAsync();
-		if (membersResult.IsFailure)
-			return Result.Failure(membersResult.Error);
 
-		TeamMember? chief = membersResult.Value.FirstOrDefault(m => m.Id == roster.ChiefId);
-		if (chief is null)
+		return membersResult switch
 		{
-			LogChiefNotFoundForRoster(roster.Id);
-			return Result.Failure("Chief not found in active members");
-		}
+			{ IsFailure: true, Error: var error } => Result.Failure(error),
+			{ IsSuccess: true, Value: var members } => await ProcessChiefReminderAsync(members, roster),
 
+			_ => throw new InvalidOperationException("Result must be either Success or Failure")
+		};
+	}
+
+	private async Task<Result> ProcessChiefReminderAsync(List<TeamMember> members, RosterEntry roster)
+	{
+		TeamMember? chief = members.FirstOrDefault(m => m.Id == roster.ChiefId);
+
+		return chief switch
+		{
+			null => Result.Failure("Chief not found in active members").Tap(() => LogChiefNotFoundForRoster(roster.Id)),
+			_ => await SendHandoverReminderAsync(chief)
+		};
+	}
+
+	private async Task<Result> SendHandoverReminderAsync(TeamMember chief)
+	{
 		string message = FormatHandoverReminder(chief);
 		Result<string> sendResult = await slack.SendAndPinInternalAsync(message);
 
-		return sendResult.IsSuccess
-			? Result.Success()
-			: Result.Failure(sendResult.Error);
+		return sendResult.Match(
+			onSuccess: _ => Result.Success(),
+			onFailure: error => Result.Failure(error)
+		);
 	}
 
 	private async Task<Result<(string publicTs, string internalTs)>> SendNotificationsAsync(AssignmentResult assignment)
@@ -131,17 +181,28 @@ public sealed partial class AssignmentService(
 		await Task.WhenAll(publicTask, internalTask);
 
 		Result<string> publicResult = await publicTask;
-		if (publicResult.IsFailure) // At this point we haven't notified anyone publicly, so fail
-			return Result.Failure<(string, string)>(publicResult.Error);
-
 		Result<string> internalResult = await internalTask;
 
-		var notificationResult = Result.Combine(publicResult, internalResult);
-
-		return notificationResult.IsFailure switch
+		// If public fails, fail immediately as we haven't notified anyone publicly
+		return publicResult switch
 		{
-			true => Result.Failure<(string, string)>(notificationResult.Error),
-			_ => Result.Success((publicResult.Value, internalResult.Value))
+			{ IsFailure: true, Error: var error } => Result.Failure<(string, string)>(error),
+			{ IsSuccess: true, Value: var publicTs } => CombineNotificationResults(publicTs, internalResult),
+
+			_ => throw new InvalidOperationException("Result must be either Success or Failure")
+		};
+	}
+
+	private static Result<(string publicTs, string internalTs)> CombineNotificationResults(
+		string publicTs,
+		Result<string> internalResult)
+	{
+		return internalResult switch
+		{
+			{ IsFailure: true, Error: var error } => Result.Failure<(string, string)>(error),
+			{ IsSuccess: true, Value: var internalTs } => Result.Success((publicTs, internalTs)),
+
+			_ => throw new InvalidOperationException("Result must be either Success or Failure")
 		};
 	}
 
@@ -153,13 +214,9 @@ public sealed partial class AssignmentService(
 		Result<int> unpinResult = await slack.UnpinAllMessagesAsync();
 
 		if (unpinResult.IsSuccess)
-		{
 			LogUnpinnedAllPreviousMessages();
-		}
 		else
-		{
 			LogFailedToUnpinAllMessages(unpinResult.Error);
-		}
 	}
 
 	private Result<(TeamMember chief, TeamMember backup)> SelectChiefAndBackup(List<TeamMember> members)
@@ -189,18 +246,18 @@ public sealed partial class AssignmentService(
 
 	private static string FormatHandoverReminder(TeamMember chief) =>
 		$"""
-		🔥 Fire Chief Handover Reminder
+		 🔥 Fire Chief Handover Reminder
 
-		<@{chief.SlackId}> – Your Fire Chief rotation ends this week!
+		 <@{chief.SlackId}> – Your Fire Chief rotation ends this week!
 
-		Please prepare your handover:
-		- [ ] Review open support tickets
-		- [ ] Check pending Linear issues
-		- [ ] Brief on ongoing critical issues
-		- [ ] Schedule handover with next Chief
+		 Please prepare your handover:
+		 - [ ] Review open support tickets
+		 - [ ] Check pending Linear issues
+		 - [ ] Brief on ongoing critical issues
+		 - [ ] Schedule handover with next Chief
 
-		Next Chief will be assigned Monday morning.
-		""";
+		 Next Chief will be assigned Monday morning.
+		 """;
 
 	private static DateTime CalculateNextMonday()
 	{

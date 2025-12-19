@@ -80,39 +80,52 @@ public sealed partial class SlackService(IOptions<AppConfig> config, ISlackClien
 	/// <summary>
 	/// Sends a message to the internal team channel and pins it.
 	/// </summary>
-	public async Task<Result<string>> SendAndPinInternalAsync(string message)
-	{
-		Result<string> sendResult = await SendInternalAsync(message);
-		if (sendResult.IsFailure)
-			return sendResult;
-
-		Result pinResult = await PinMessageAsync(_internalChannelId, sendResult.Value);
-		if (pinResult.IsFailure)
-		{
-			LogFailedToPinInternalMessage(pinResult.Error);
-			// Still return success with timestamp even if pinning fails
-		}
-
-		return sendResult;
-	}
+	public async Task<Result<string>> SendAndPinInternalAsync(string message) =>
+		await SendAndPinAsync(
+			sendMessage: () => SendInternalAsync(message),
+			channelId: _internalChannelId,
+			onPinFailure: LogFailedToPinInternalMessage
+		);
 
 	/// <summary>
 	/// Sends a message to the public team channel and pins it.
 	/// </summary>
-	public async Task<Result<string>> SendAndPinPublicAsync(string message)
+	public async Task<Result<string>> SendAndPinPublicAsync(string message) =>
+		await SendAndPinAsync(
+			sendMessage: () => SendPublicAsync(message),
+			channelId: _publicChannelId,
+			onPinFailure: LogFailedToPinPublicMessage
+		);
+
+	private async Task<Result<string>> SendAndPinAsync(
+		Func<Task<Result<string>>> sendMessage,
+		string channelId,
+		Action<string> onPinFailure)
 	{
-		Result<string> sendResult = await SendPublicAsync(message);
-		if (sendResult.IsFailure)
-			return sendResult;
+		Result<string> sendResult = await sendMessage();
 
-		Result pinResult = await PinMessageAsync(_publicChannelId, sendResult.Value);
-		if (pinResult.IsFailure)
+		return sendResult switch
 		{
-			LogFailedToPinPublicMessage(pinResult.Error);
-			// Still return success with timestamp even if pinning fails
-		}
+			{ IsFailure: true } => sendResult,
+			{ IsSuccess: true, Value: var messageTs } => await PinAndReturnMessageAsync(channelId, messageTs, onPinFailure, sendResult),
 
-		return sendResult;
+			_ => throw new InvalidOperationException("Result must be either Success or Failure")
+		};
+	}
+
+	private async Task<Result<string>> PinAndReturnMessageAsync(
+		string channelId,
+		string messageTs,
+		Action<string> onPinFailure,
+		Result<string> originalSendResult)
+	{
+		Result pinResult = await PinMessageAsync(channelId, messageTs);
+
+		// Still return success with timestamp even if pinning fails
+		if (pinResult.IsFailure)
+			onPinFailure(pinResult.Error);
+
+		return originalSendResult;
 	}
 
 	/// <summary>
@@ -188,8 +201,6 @@ public sealed partial class SlackService(IOptions<AppConfig> config, ISlackClien
 	/// </summary>
 	public async Task<Result<int>> UnpinAllMessagesAsync()
 	{
-		int unpinnedCount = 0;
-
 		// Get all pinned messages in both channels
 		List<Task<Result<List<string>>>> tasks =
 		[
@@ -199,33 +210,25 @@ public sealed partial class SlackService(IOptions<AppConfig> config, ISlackClien
 
 		await Task.WhenAll(tasks);
 
-		// Collect all timestamps
-		List<string> allTimestamps = [];
-		foreach (Task<Result<List<string>>> task in tasks)
-		{
-			Result<List<string>> result = await task;
-			if (result.IsSuccess)
-			{
-				allTimestamps.AddRange(result.Value);
-			}
-		}
+		// Collect all timestamps from successful results
+		List<string> allTimestamps = tasks
+			.Select(task => task.Result)
+			.Where(result => result.IsSuccess)
+			.SelectMany(result => result.Value)
+			.ToList();
 
 		// Unpin all messages in parallel
-		List<Task> unpinTasks = [];
-		foreach (string ts in allTimestamps)
+		if (allTimestamps.Count > 0)
 		{
-			unpinTasks.Add(UnpinMessageAsync(_internalChannelId, ts));
-			unpinTasks.Add(UnpinMessageAsync(_publicChannelId, ts));
-		}
+			var unpinTasks = allTimestamps
+				.SelectMany(ts => new[] { UnpinMessageAsync(_internalChannelId, ts), UnpinMessageAsync(_publicChannelId, ts) })
+				.ToList();
 
-		if (unpinTasks.Count > 0)
-		{
 			await Task.WhenAll(unpinTasks);
-			unpinnedCount = allTimestamps.Count;
-			LogUnpinnedAllMessages(unpinnedCount);
+			LogUnpinnedAllMessages(allTimestamps.Count);
 		}
 
-		return Result.Success(unpinnedCount);
+		return Result.Success(allTimestamps.Count);
 	}
 
 	private async Task<Result<List<string>>> GetPinnedMessageTimestampsAsync(string channelId)

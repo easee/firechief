@@ -39,22 +39,23 @@ static async Task<int> ExecuteAssignmentAsync(AssignmentService service)
 {
 	Result<AssignmentOutcome> assignment = await service.RunAssignmentAsync();
 
-	if (assignment.IsFailure)
-		return HandleFailure($"❌ Assignment failed: {assignment.Error}");
-
-	return assignment.Value switch
+	return assignment switch
 	{
-		AssignmentCreated created => HandleSuccess(
+		{ IsFailure: true, Error: var error } =>
+			HandleFailure($"❌ Assignment failed: {error}"),
+
+		{ IsSuccess: true, Value: AssignmentCreated created } => HandleSuccess(
 			created.Assignment.Chief.Id == created.Assignment.Backup.Id
 				? $"✅ Assignment created: {created.Assignment.Chief.Name} (Chief, no backup available)"
 				: $"✅ Assignment created: {created.Assignment.Chief.Name} (Chief), {created.Assignment.Backup.Name} (Backup)"
 		),
-		AssignmentAlreadyExists exists => HandleSuccess(
-			$"ℹ️ Assignment already exists for {exists.WeekStart:yyyy-MM-dd}"
-		),
-		InsufficientCandidates insufficient => HandleFailure(
-			$"❌ Need at least 2 candidates, found {insufficient.AvailableCount}"
-		),
+
+		{ IsSuccess: true, Value: AssignmentAlreadyExists exists } =>
+			HandleSuccess($"ℹ️ Assignment already exists for {exists.WeekStart:yyyy-MM-dd}"),
+
+		{ IsSuccess: true, Value: InsufficientCandidates insufficient } =>
+			HandleFailure($"❌ Need at least 2 candidates, found {insufficient.AvailableCount}"),
+
 		_ => HandleFailure("❌ Unknown outcome")
 	};
 }
@@ -63,9 +64,13 @@ static async Task<int> ExecuteFridayReminderAsync(AssignmentService service)
 {
 	Result reminder = await service.RunFridayReminderAsync();
 
-	return reminder.IsSuccess
-		? HandleSuccess("✅ Friday reminder sent")
-		: HandleFailure($"❌ Reminder failed: {reminder.Error}");
+	return reminder switch
+	{
+		{ IsSuccess: true } => HandleSuccess("✅ Friday reminder sent"),
+		{ IsFailure: true, Error: var error } => HandleFailure($"❌ Reminder failed: {error}"),
+
+		_ => HandleFailure("❌ Unknown error")
+	};
 }
 
 static Task<int> ShowUsage()
