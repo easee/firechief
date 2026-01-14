@@ -20,6 +20,10 @@ public interface ISlackClient
 	[Get("/pins.list")]
 	[Headers("Authorization: Bearer")]
 	Task<SlackPinsListResponse> ListPinsAsync([Query] string channel, [Authorize] string token);
+
+	[Post("/conversations.setTopic")]
+	[Headers("Authorization: Bearer")]
+	Task<SlackTopicResponse> SetTopicAsync([Body] SlackSetTopicRequest request, [Authorize] string token);
 }
 
 public record SlackPostRequest(
@@ -59,4 +63,15 @@ public record SlackPinItem(
 
 public record SlackPinMessage(
 	[property: JsonPropertyName("ts")] string? Ts
+);
+
+public record SlackSetTopicRequest(
+	[property: JsonPropertyName("channel")]
+	string Channel,
+	[property: JsonPropertyName("topic")] string Topic
+);
+
+public record SlackTopicResponse(
+	[property: JsonPropertyName("ok")] bool Ok,
+	[property: JsonPropertyName("error")] string? Error
 );

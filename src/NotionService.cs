@@ -134,16 +134,24 @@ public sealed partial class NotionService(IOptions<AppConfig> config, ILogger<No
 	}
 
 	/// <summary>
-	/// Updates the last chief date for a team member and clears their volunteer flag.
+	/// Updates the last chief date for a team member, clears their volunteer flag, and increments their chief count.
 	/// </summary>
 	public async Task<Result> UpdateLastChiefDateAsync(string memberId, DateTime date)
 	{
 		try
 		{
+			// First retrieve the current page to get the current Chief Count
+			Page currentPage = await _client.Pages.RetrieveAsync(memberId);
+			int currentCount = currentPage.Properties.TryGetValue("Chief Count", out PropertyValue? countProp) &&
+							   countProp is NumberPropertyValue { Number: not null } numVal
+				? (int)numVal.Number.Value
+				: 0;
+
 			Dictionary<string, PropertyValue> props = new()
 			{
 				["Recent Chief Date"] = new DatePropertyValue { Date = new Date { Start = date.Date } },
-				["Volunteer"] = new CheckboxPropertyValue { Checkbox = false }
+				["Volunteer"] = new CheckboxPropertyValue { Checkbox = false },
+				["Chief Count"] = new NumberPropertyValue { Number = currentCount + 1 }
 			};
 
 			await _client.Pages.UpdatePropertiesAsync(memberId, props);
@@ -217,13 +225,19 @@ public sealed partial class NotionService(IOptions<AppConfig> config, ILogger<No
 			? dateVal.Date.Start?.DateTime
 			: null;
 
+		int chiefCount = props.TryGetValue("Chief Count", out PropertyValue? countProp) &&
+						 countProp is NumberPropertyValue { Number: not null } numVal
+			? (int)numVal.Number.Value
+			: 0;
+
 		return new TeamMember(
 			Id: item.Id,
 			Name: name,
 			SlackId: slackId,
 			LastChiefDate: lastDate,
 			IsActive: true,
-			IsVolunteer: isVolunteer
+			IsVolunteer: isVolunteer,
+			ChiefCount: chiefCount
 		);
 	}
 

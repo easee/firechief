@@ -27,8 +27,8 @@ AssignmentService assignmentService = host.Services.GetRequiredService<Assignmen
 
 int result = await (mode switch
 {
-	"assign" or "remind-monday" => ExecuteAssignmentAsync(assignmentService),
-	"remind-friday" => ExecuteFridayReminderAsync(assignmentService),
+	"assign" => ExecuteAssignmentAsync(assignmentService),
+	"remind-monday" => ExecuteMondayReminderAsync(assignmentService),
 	_ => ShowUsage()
 });
 
@@ -60,13 +60,13 @@ static async Task<int> ExecuteAssignmentAsync(AssignmentService service)
 	};
 }
 
-static async Task<int> ExecuteFridayReminderAsync(AssignmentService service)
+static async Task<int> ExecuteMondayReminderAsync(AssignmentService service)
 {
-	Result reminder = await service.RunFridayReminderAsync();
+	Result reminder = await service.RunMondayReminderAsync();
 
 	return reminder switch
 	{
-		{ IsSuccess: true } => HandleSuccess("✅ Friday reminder sent"),
+		{ IsSuccess: true } => HandleSuccess("✅ Monday reminder sent"),
 		{ IsFailure: true, Error: var error } => HandleFailure($"❌ Reminder failed: {error}"),
 
 		_ => HandleFailure("❌ Unknown error")
@@ -83,13 +83,12 @@ static Task<int> ShowUsage()
 
 		Commands:
 		  assign          Run weekly assignment workflow
-		  remind-monday   Alias for 'assign'
-		  remind-friday   Send Friday handover reminder
+		  remind-monday   Send Monday welcome reminder
 		  help            Show this help message
 
 		Examples:
 		  dotnet run -- assign
-		  dotnet run -- remind-friday
+		  dotnet run -- remind-monday
 		""");
 	return Task.FromResult(0);
 }

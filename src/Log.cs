@@ -25,41 +25,14 @@ public sealed partial class SlackService
 	[LoggerMessage(LogLevel.Error, "Failed to send public message")]
 	partial void LogFailedToSendPublicMessage(Exception exception);
 
-	[LoggerMessage(LogLevel.Warning, "Failed to pin internal message: {Error}")]
-	partial void LogFailedToPinInternalMessage(string error);
+	[LoggerMessage(LogLevel.Information, "Set topic for channel {ChannelId}: {Topic}")]
+	partial void LogSetTopic(string channelId, string topic);
 
-	[LoggerMessage(LogLevel.Warning, "Failed to pin public message: {Error}")]
-	partial void LogFailedToPinPublicMessage(string error);
+	[LoggerMessage(LogLevel.Warning, "Failed to set topic for channel {ChannelId}: {Error}")]
+	partial void LogFailedToSetTopic(string channelId, string error);
 
-	[LoggerMessage(LogLevel.Error, "Failed to pin message: {Error}")]
-	partial void LogFailedToPinMessage(string error);
-
-	[LoggerMessage(LogLevel.Information, "Pinned message {MessageTs} in {ChannelId}")]
-	partial void LogPinnedMessage(string messageTs, string channelId);
-
-	[LoggerMessage(LogLevel.Error, "Failed to pin message")]
-	partial void LogFailedToPinMessage(Exception exception);
-
-	[LoggerMessage(LogLevel.Warning, "Failed to unpin message {MessageTs}: {Error}")]
-	partial void LogFailedToUnpinMessage(string messageTs, string error);
-
-	[LoggerMessage(LogLevel.Information, "Unpinned message {MessageTs} in {ChannelId}")]
-	partial void LogUnpinnedMessage(string messageTs, string channelId);
-
-	[LoggerMessage(LogLevel.Warning, "Failed to unpin message {MessageTs}")]
-	partial void LogFailedToUnpinMessage(Exception exception, string messageTs);
-
-	[LoggerMessage(LogLevel.Information, "Unpinned {Count} messages")]
-	partial void LogUnpinnedAllMessages(int count);
-
-	[LoggerMessage(LogLevel.Warning, "Failed to list pins for {ChannelId}: {Error}")]
-	partial void LogFailedToListPins(string channelId, string error);
-
-	[LoggerMessage(LogLevel.Information, "Found {Count} pinned messages in {ChannelId}")]
-	partial void LogFoundPinnedMessages(int count, string channelId);
-
-	[LoggerMessage(LogLevel.Error, "Failed to list pins for {ChannelId}")]
-	partial void LogFailedToListPins(Exception exception, string channelId);
+	[LoggerMessage(LogLevel.Warning, "Failed to set topic for channel {ChannelId}")]
+	partial void LogFailedToSetTopic(Exception exception, string channelId);
 }
 
 public sealed partial class NotionService
@@ -118,8 +91,8 @@ public sealed partial class AssignmentService
 	[LoggerMessage(LogLevel.Information, "Assignment workflow completed successfully")]
 	partial void LogAssignmentWorkflowCompleted();
 
-	[LoggerMessage(LogLevel.Information, "Starting Friday reminder workflow")]
-	partial void LogStartingFridayReminderWorkflow();
+	[LoggerMessage(LogLevel.Information, "Starting Monday reminder workflow")]
+	partial void LogStartingMondayReminderWorkflow();
 
 	[LoggerMessage(LogLevel.Warning, "No roster found for current week {Date}")]
 	partial void LogNoRosterFoundForCurrentWeek(DateTime date);
@@ -127,11 +100,17 @@ public sealed partial class AssignmentService
 	[LoggerMessage(LogLevel.Warning, "Chief not found for roster {RosterId}")]
 	partial void LogChiefNotFoundForRoster(string rosterId);
 
-	[LoggerMessage(LogLevel.Information, "Unpinned all previous messages before creating new assignment")]
-	partial void LogUnpinnedAllPreviousMessages();
+	[LoggerMessage(LogLevel.Information, "Handover recommendation sent from {OutgoingChief} to {IncomingChief}")]
+	partial void LogHandoverRecommendationSent(string outgoingChief, string incomingChief);
 
-	[LoggerMessage(LogLevel.Warning, "Failed to unpin all messages: {Error}")]
-	partial void LogFailedToUnpinAllMessages(string error);
+	[LoggerMessage(LogLevel.Warning, "Failed to send handover recommendation: {Error}")]
+	partial void LogFailedToSendHandoverRecommendation(string error);
+
+	[LoggerMessage(LogLevel.Warning, "Failed to get members for handover: {Error}")]
+	partial void LogFailedToGetMembersForHandover(string error);
+
+	[LoggerMessage(LogLevel.Warning, "Current chief not found for handover: {ChiefId}")]
+	partial void LogCurrentChiefNotFoundForHandover(string chiefId);
 
 	[LoggerMessage(LogLevel.Error, "No active team members available")]
 	partial void LogNoActiveTeamMembers();

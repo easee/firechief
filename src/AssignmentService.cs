@@ -70,8 +70,9 @@ public sealed partial class AssignmentService(
 
 		AssignmentResult assignment = new(chief, backup, nextMonday);
 
-		// Unpin previous week's assignment messages
-		await UnpinPreviousAssignmentAsync(nextMonday);
+		// Fetch current week's roster for handover notification
+		DateTime thisMonday = CalculateThisMonday();
+		Result<RosterEntry?> currentRosterResult = await notion.GetRosterForWeekAsync(thisMonday);
 
 		// Create roster entry
 		RosterEntry entry = new(
@@ -86,7 +87,7 @@ public sealed partial class AssignmentService(
 		return createResult switch
 		{
 			{ IsFailure: true, Error: var error } => Result.Failure<AssignmentOutcome>(error),
-			{ IsSuccess: true, Value: var rosterId } => await FinalizeAssignmentAsync(assignment, rosterId, nextMonday),
+			{ IsSuccess: true, Value: var rosterId } => await FinalizeAssignmentAsync(assignment, rosterId, nextMonday, currentRosterResult),
 
 			_ => throw new InvalidOperationException("Result must be either Success or Failure")
 		};
@@ -95,14 +96,15 @@ public sealed partial class AssignmentService(
 	private async Task<Result<AssignmentOutcome>> FinalizeAssignmentAsync(
 		AssignmentResult assignment,
 		string rosterId,
-		DateTime nextMonday)
+		DateTime nextMonday,
+		Result<RosterEntry?> currentRosterResult)
 	{
 		// Update chief's last assignment date
 		Result updateResult = await notion.UpdateLastChiefDateAsync(assignment.Chief.Id, nextMonday);
 		if (updateResult.IsFailure)
 			LogFailedToUpdateChiefDate(updateResult.Error);
 
-		// Send notifications and pin them, then store timestamps
+		// Send notifications and set topic, then store timestamps
 		Result<(string publicTs, string internalTs)> notificationResult = await SendNotificationsAsync(assignment);
 		if (notificationResult.IsSuccess)
 		{
@@ -113,16 +115,25 @@ public sealed partial class AssignmentService(
 			LogFailedToSendNotifications(notificationResult.Error);
 		}
 
+		// Send handover recommendation if current roster exists
+		if (currentRosterResult is { IsSuccess: true, Value: not null })
+		{
+			Result handoverResult = await SendHandoverRecommendationAsync(currentRosterResult.Value, assignment);
+			// Log but don't fail workflow if handover fails
+			if (handoverResult.IsFailure)
+				LogFailedToSendHandoverRecommendation(handoverResult.Error);
+		}
+
 		LogAssignmentWorkflowCompleted();
 		return Result.Success<AssignmentOutcome>(new AssignmentCreated(assignment));
 	}
 
 	/// <summary>
-	/// Sends a Friday reminder to the current Fire Chief.
+	/// Sends a Monday welcome reminder to the current Fire Chief.
 	/// </summary>
-	public async Task<Result> RunFridayReminderAsync()
+	public async Task<Result> RunMondayReminderAsync()
 	{
-		LogStartingFridayReminderWorkflow();
+		LogStartingMondayReminderWorkflow();
 		DateTime thisMonday = CalculateThisMonday();
 		Result<RosterEntry?> rosterResult = await notion.GetRosterForWeekAsync(thisMonday);
 
@@ -131,52 +142,54 @@ public sealed partial class AssignmentService(
 			{ IsFailure: true, Error: var error } => Result.Failure(error),
 			{ IsSuccess: true, Value: null } => Result.Failure("No roster found for current week")
 				.Tap(() => LogNoRosterFoundForCurrentWeek(thisMonday)),
-			{ IsSuccess: true, Value: var roster } => await SendReminderToChiefAsync(roster),
+			{ IsSuccess: true, Value: var roster } => await SendMondayWelcomeAsync(roster),
 
 			_ => throw new InvalidOperationException("Result must be either Success or Failure")
 		};
 	}
 
-	private async Task<Result> SendReminderToChiefAsync(RosterEntry roster)
+	private async Task<Result> SendMondayWelcomeAsync(RosterEntry roster)
 	{
 		Result<List<TeamMember>> membersResult = await notion.GetActiveMembersAsync();
 
 		return membersResult switch
 		{
 			{ IsFailure: true, Error: var error } => Result.Failure(error),
-			{ IsSuccess: true, Value: var members } => await ProcessChiefReminderAsync(members, roster),
+			{ IsSuccess: true, Value: var members } => await ProcessMondayWelcomeAsync(members, roster),
 
 			_ => throw new InvalidOperationException("Result must be either Success or Failure")
 		};
 	}
 
-	private async Task<Result> ProcessChiefReminderAsync(List<TeamMember> members, RosterEntry roster)
+	private async Task<Result> ProcessMondayWelcomeAsync(List<TeamMember> members, RosterEntry roster)
 	{
 		TeamMember? chief = members.FirstOrDefault(m => m.Id == roster.ChiefId);
+		TeamMember? backup = members.FirstOrDefault(m => m.Id == roster.BackupId);
 
-		return chief switch
+		if (chief is null)
 		{
-			null => Result.Failure("Chief not found in active members").Tap(() => LogChiefNotFoundForRoster(roster.Id)),
-			_ => await SendHandoverReminderAsync(chief)
-		};
-	}
+			LogChiefNotFoundForRoster(roster.Id);
+			return Result.Failure("Chief not found in active members");
+		}
 
-	private async Task<Result> SendHandoverReminderAsync(TeamMember chief)
-	{
-		string message = FormatHandoverReminder(chief);
-		Result<string> sendResult = await slack.SendAndPinInternalAsync(message);
+		string message = FormatMondayWelcome(chief, backup);
+		string topic = FormatChannelTopic(chief, roster.WeekStart);
+		Result<string> sendResult = await slack.SendAndSetInternalTopicAsync(message, topic);
 
 		return sendResult.Match(
 			onSuccess: _ => Result.Success(),
-			onFailure: error => Result.Failure(error)
+			onFailure: Result.Failure
 		);
 	}
 
 	private async Task<Result<(string publicTs, string internalTs)>> SendNotificationsAsync(AssignmentResult assignment)
 	{
-		// Send and pin both messages in parallel
-		Task<Result<string>> publicTask = slack.SendAndPinPublicAsync(assignment.FormatPublicAnnouncement());
-		Task<Result<string>> internalTask = slack.SendAndPinInternalAsync(assignment.FormatInternalNotification());
+		// Create topic for both channels
+		string topic = FormatChannelTopic(assignment.Chief, assignment.WeekStart);
+
+		// Send and set topic for both channels in parallel
+		Task<Result<string>> publicTask = slack.SendAndSetPublicTopicAsync(assignment.FormatPublicAnnouncement(), topic);
+		Task<Result<string>> internalTask = slack.SendAndSetInternalTopicAsync(assignment.FormatInternalNotification(), topic);
 
 		await Task.WhenAll(publicTask, internalTask);
 
@@ -206,17 +219,39 @@ public sealed partial class AssignmentService(
 		};
 	}
 
-	private async Task UnpinPreviousAssignmentAsync(DateTime upcomingWeekStart)
+	private async Task<Result> SendHandoverRecommendationAsync(RosterEntry currentRoster, AssignmentResult incomingAssignment)
 	{
-		// Unpin ALL pinned messages in both channels to avoid pin saturation
-		// This ensures only the latest assignment will be pinned
-		// Uses Slack API to get all pins, so it catches messages not tracked in Notion
-		Result<int> unpinResult = await slack.UnpinAllMessagesAsync();
+		Result<List<TeamMember>> membersResult = await notion.GetActiveMembersAsync();
 
-		if (unpinResult.IsSuccess)
-			LogUnpinnedAllPreviousMessages();
-		else
-			LogFailedToUnpinAllMessages(unpinResult.Error);
+		return await membersResult.Match(
+			onSuccess: async members =>
+			{
+				TeamMember? outgoingChief = members.FirstOrDefault(m => m.Id == currentRoster.ChiefId);
+
+				if (outgoingChief is null)
+				{
+					LogCurrentChiefNotFoundForHandover(currentRoster.ChiefId);
+					return Result.Failure("Current chief not found");
+				}
+
+				string message = FormatHandoverRecommendation(outgoingChief, incomingAssignment.Chief);
+				Result<string> sendResult = await slack.SendInternalAsync(message);
+
+				if (sendResult.IsSuccess)
+				{
+					LogHandoverRecommendationSent(outgoingChief.Name, incomingAssignment.Chief.Name);
+					return Result.Success();
+				}
+
+				LogFailedToSendHandoverRecommendation(sendResult.Error);
+				return Result.Failure(sendResult.Error);
+			},
+			onFailure: error =>
+			{
+				LogFailedToGetMembersForHandover(error);
+				return Task.FromResult(Result.Failure(error));
+			}
+		);
 	}
 
 	private Result<(TeamMember chief, TeamMember backup)> SelectChiefAndBackup(List<TeamMember> members)
@@ -244,20 +279,48 @@ public sealed partial class AssignmentService(
 		return Result.Success((chief, backup));
 	}
 
-	private static string FormatHandoverReminder(TeamMember chief) =>
+	private static string FormatMondayWelcome(TeamMember chief, TeamMember? backup)
+	{
+		string backupLine = backup != null && backup.Id != chief.Id
+			? $"\n\nYour backup is <@{backup.SlackId}>"
+			: "";
+
+		return $"""
+			🔥 Fire Chief Week Start
+
+			<@{chief.SlackId}> – Welcome to your Fire Chief week!
+
+			Your responsibilities this week:
+			- [ ] Monitor #team-software for support requests
+			- [ ] Triage and create Linear issues as needed
+			- [ ] Shield the team from interruptions
+			- [ ] Prepare handover notes for next Friday{backupLine}
+
+			Good luck! 🚒
+			""";
+	}
+
+	private static string FormatHandoverRecommendation(TeamMember outgoingChief, TeamMember incomingChief) =>
 		$"""
-		 🔥 Fire Chief Handover Reminder
+		🔄 Fire Chief Handover – Next Week
 
-		 <@{chief.SlackId}> – Your Fire Chief rotation ends this week!
+		<@{outgoingChief.SlackId}> → <@{incomingChief.SlackId}>
 
-		 Please prepare your handover:
-		 - [ ] Review open support tickets
-		 - [ ] Check pending Linear issues
-		 - [ ] Brief on ongoing critical issues
-		 - [ ] Schedule handover with next Chief
+		The next Fire Chief has been assigned for next week!
 
-		 Next Chief will be assigned Monday morning.
-		 """;
+		*Outgoing Chief (<@{outgoingChief.SlackId}>):* Please prepare your handover:
+		• Review open support tickets
+		• Check pending Linear issues
+		• Brief on ongoing critical issues
+		• Share any context or ongoing work
+
+		*Incoming Chief (<@{incomingChief.SlackId}>):* You're up next week! Consider reaching out to coordinate timing.
+
+		Thanks for your service this week! 🚒
+		""";
+
+	private static string FormatChannelTopic(TeamMember chief, DateTime weekStart) =>
+		$"🔥 Fire Chief: <@{chief.SlackId}> (Week of {weekStart:MMM d})";
 
 	private static DateTime CalculateNextMonday()
 	{

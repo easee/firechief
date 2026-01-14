@@ -5,7 +5,7 @@ using Microsoft.Extensions.Options;
 namespace FireChief;
 
 /// <summary>
-/// Service for sending notifications to Slack channels with pinning support.
+/// Service for sending notifications to Slack channels with topic setting support.
 /// </summary>
 public sealed partial class SlackService(IOptions<AppConfig> config, ISlackClient client, ILogger<SlackService> logger)
 {
@@ -16,7 +16,7 @@ public sealed partial class SlackService(IOptions<AppConfig> config, ISlackClien
 	/// <summary>
 	/// Sends a message to the internal team channel and returns the message timestamp.
 	/// </summary>
-	private async Task<Result<string>> SendInternalAsync(string message)
+	public async Task<Result<string>> SendInternalAsync(string message)
 	{
 		if (string.IsNullOrWhiteSpace(_botToken))
 		{
@@ -78,183 +78,61 @@ public sealed partial class SlackService(IOptions<AppConfig> config, ISlackClien
 	}
 
 	/// <summary>
-	/// Sends a message to the internal team channel and pins it.
+	/// Sends a message to the internal team channel and sets the channel topic.
 	/// </summary>
-	public async Task<Result<string>> SendAndPinInternalAsync(string message) =>
-		await SendAndPinAsync(
-			sendMessage: () => SendInternalAsync(message),
-			channelId: _internalChannelId,
-			onPinFailure: LogFailedToPinInternalMessage
-		);
-
-	/// <summary>
-	/// Sends a message to the public team channel and pins it.
-	/// </summary>
-	public async Task<Result<string>> SendAndPinPublicAsync(string message) =>
-		await SendAndPinAsync(
-			sendMessage: () => SendPublicAsync(message),
-			channelId: _publicChannelId,
-			onPinFailure: LogFailedToPinPublicMessage
-		);
-
-	private async Task<Result<string>> SendAndPinAsync(
-		Func<Task<Result<string>>> sendMessage,
-		string channelId,
-		Action<string> onPinFailure)
+	public async Task<Result<string>> SendAndSetInternalTopicAsync(string message, string topic)
 	{
-		Result<string> sendResult = await sendMessage();
+		Result<string> sendResult = await SendInternalAsync(message);
 
-		return sendResult switch
-		{
-			{ IsFailure: true } => sendResult,
-			{ IsSuccess: true, Value: var messageTs } => await PinAndReturnMessageAsync(channelId, messageTs, onPinFailure, sendResult),
+		if (sendResult.IsFailure)
+			return sendResult;
 
-			_ => throw new InvalidOperationException("Result must be either Success or Failure")
-		};
-	}
+		// Set topic (don't fail if this doesn't work)
+		await SetChannelTopicAsync(_internalChannelId, topic);
 
-	private async Task<Result<string>> PinAndReturnMessageAsync(
-		string channelId,
-		string messageTs,
-		Action<string> onPinFailure,
-		Result<string> originalSendResult)
-	{
-		Result pinResult = await PinMessageAsync(channelId, messageTs);
-
-		// Still return success with timestamp even if pinning fails
-		if (pinResult.IsFailure)
-			onPinFailure(pinResult.Error);
-
-		return originalSendResult;
+		return sendResult;
 	}
 
 	/// <summary>
-	/// Pins a message in the specified channel.
+	/// Sends a message to the public team channel and sets the channel topic.
 	/// </summary>
-	private async Task<Result> PinMessageAsync(string channelId, string messageTs)
+	public async Task<Result<string>> SendAndSetPublicTopicAsync(string message, string topic)
+	{
+		Result<string> sendResult = await SendPublicAsync(message);
+
+		if (sendResult.IsFailure)
+			return sendResult;
+
+		// Set topic (don't fail if this doesn't work)
+		await SetChannelTopicAsync(_publicChannelId, topic);
+
+		return sendResult;
+	}
+
+	/// <summary>
+	/// Sets the topic for a channel.
+	/// </summary>
+	private async Task SetChannelTopicAsync(string channelId, string topic)
 	{
 		try
 		{
-			var request = new SlackPinRequest(channelId, messageTs);
-			SlackPinResponse response = await client.PinMessageAsync(request, _botToken);
+			var request = new SlackSetTopicRequest(channelId, topic);
+			SlackTopicResponse response = await client.SetTopicAsync(request, _botToken);
 
 			if (!response.Ok)
 			{
-				LogFailedToPinMessage(response.Error ?? "Unknown error");
-				return Result.Failure($"Slack API error: {response.Error ?? "Unknown error"}");
+				LogFailedToSetTopic(channelId, response.Error ?? "Unknown error");
+				Result.Failure($"Slack API error: {response.Error ?? "Unknown error"}");
+				return;
 			}
 
-			LogPinnedMessage(messageTs, channelId);
-			return Result.Success();
+			LogSetTopic(channelId, topic);
+			Result.Success();
 		}
 		catch (Exception ex)
 		{
-			LogFailedToPinMessage(ex);
-			return Result.Failure($"Slack API error: {ex.Message}");
-		}
-	}
-
-	/// <summary>
-	/// Unpins a message in the specified channel.
-	/// </summary>
-	private async Task<Result> UnpinMessageAsync(string channelId, string messageTs)
-	{
-		if (string.IsNullOrWhiteSpace(messageTs))
-			return Result.Success(); // Nothing to unpin
-
-		try
-		{
-			var request = new SlackPinRequest(channelId, messageTs);
-			SlackPinResponse response = await client.UnpinMessageAsync(request, _botToken);
-
-			if (!response.Ok)
-			{
-				// Don't fail if message doesn't exist or is already unpinned
-				LogFailedToUnpinMessage(messageTs, response.Error ?? "Unknown error");
-				return Result.Success();
-			}
-
-			LogUnpinnedMessage(messageTs, channelId);
-			return Result.Success();
-		}
-		catch (Exception ex)
-		{
-			LogFailedToUnpinMessage(ex, messageTs);
-			return Result.Success(); // Don't fail the overall workflow if unpinning fails
-		}
-	}
-
-	/// <summary>
-	/// Unpins a message from the internal channel.
-	/// </summary>
-	public async Task<Result> UnpinInternalMessageAsync(string messageTs) =>
-		await UnpinMessageAsync(_internalChannelId, messageTs);
-
-	/// <summary>
-	/// Unpins a message from the public channel.
-	/// </summary>
-	public async Task<Result> UnpinPublicMessageAsync(string messageTs) =>
-		await UnpinMessageAsync(_publicChannelId, messageTs);
-
-	/// <summary>
-	/// Unpins ALL pinned messages in both internal and public channels.
-	/// </summary>
-	public async Task<Result<int>> UnpinAllMessagesAsync()
-	{
-		// Get all pinned messages in both channels
-		List<Task<Result<List<string>>>> tasks =
-		[
-			GetPinnedMessageTimestampsAsync(_internalChannelId),
-			GetPinnedMessageTimestampsAsync(_publicChannelId)
-		];
-
-		await Task.WhenAll(tasks);
-
-		// Collect all timestamps from successful results
-		List<string> allTimestamps = tasks
-			.Select(task => task.Result)
-			.Where(result => result.IsSuccess)
-			.SelectMany(result => result.Value)
-			.ToList();
-
-		// Unpin all messages in parallel
-		if (allTimestamps.Count > 0)
-		{
-			var unpinTasks = allTimestamps
-				.SelectMany(ts => new[] { UnpinMessageAsync(_internalChannelId, ts), UnpinMessageAsync(_publicChannelId, ts) })
-				.ToList();
-
-			await Task.WhenAll(unpinTasks);
-			LogUnpinnedAllMessages(allTimestamps.Count);
-		}
-
-		return Result.Success(allTimestamps.Count);
-	}
-
-	private async Task<Result<List<string>>> GetPinnedMessageTimestampsAsync(string channelId)
-	{
-		try
-		{
-			SlackPinsListResponse response = await client.ListPinsAsync(channelId, _botToken);
-
-			if (!response.Ok || response.Items is null)
-			{
-				LogFailedToListPins(channelId, response.Error ?? "Unknown error");
-				return Result.Success(new List<string>());
-			}
-
-			var timestamps = response.Items
-				.Where(item => item.Message?.Ts is not null)
-				.Select(item => item.Message!.Ts!)
-				.ToList();
-
-			LogFoundPinnedMessages(timestamps.Count, channelId);
-			return Result.Success(timestamps);
-		}
-		catch (Exception ex)
-		{
-			LogFailedToListPins(ex, channelId);
-			return Result.Success(new List<string>()); // Don't fail the workflow
+			LogFailedToSetTopic(ex, channelId);
+			Result.Success();
 		}
 	}
 }

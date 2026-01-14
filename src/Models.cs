@@ -9,7 +9,8 @@ public sealed record TeamMember(
 	string SlackId,
 	DateTime? LastChiefDate,
 	bool IsActive,
-	bool IsVolunteer
+	bool IsVolunteer,
+	int ChiefCount
 );
 
 /// <summary>
