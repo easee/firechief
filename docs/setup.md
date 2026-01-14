@@ -15,8 +15,8 @@ Before setting up the bot, ensure you have:
 
 The FireChief bot runs automatically on:
 
-- **Every Monday at 8:00 AM UTC** - Creates weekly Fire Chief assignment
-- **Every Friday at 3:00 PM UTC** - Sends a handover reminder to current Chief
+- **Every Friday at 1:00 PM UTC** - Creates weekly Fire Chief assignment for the following Monday and coordinates handover
+- **Every Monday at 7:00 AM UTC** - Sends a welcome reminder to the newly assigned Fire Chief
 
 You can also trigger workflows manually from the GitHub Actions tab.
 
@@ -87,7 +87,8 @@ Example: `940314ed-a82f-467d-8cdc-dd1d226fd869`
 3. Add these scopes:
    - `chat:write` - Post messages
    - `chat:write.public` - Post to public channels without joining
-   - `pins:write` - Pin messages
+   - `channels:write` - Set channel topics in public channels
+   - `groups:write` - Set channel topics in private channels
    - `users:read` - Read user information
 
 ### Install to Workspace
@@ -134,8 +135,8 @@ Go to your repository on GitHub:
 
 The workflow files are located in `.github/workflows/`:
 
-- `firechief.yml` - Monday assignment workflow
-- `friday-reminder.yml` - Friday reminder workflow
+- `firechief.yml` - Friday assignment workflow
+- `monday-reminder.yml` - Monday welcome reminder workflow
 
 If they're not already in your repository:
 
@@ -150,38 +151,40 @@ git push
 1. Go to your repository on GitHub
 2. Click the **Actions** tab
 3. You should see two workflows:
-   - "Fire Chief - Monday Assignment"
-   - "Fire Chief - Friday Reminder"
+   - "Fire Chief - Friday Assignment"
+   - "Fire Chief - Monday Reminder"
 
 ## Step 6: Test Manually (Recommended)
 
 Before waiting for the scheduled run:
 
 1. Go to the **Actions** tab
-2. Select "Fire Chief - Monday Assignment"
+2. Select "Fire Chief - Friday Assignment"
 3. Click **Run workflow** → **Run workflow**
 4. Monitor the execution logs for any errors
 
 ## Schedule Configuration
 
-### Monday Assignment
+### Friday Assignment
 
-- **Cron**: `0 8 * * 1`
-- **Time**: Every Monday at 8:00 AM UTC
+- **Cron**: `0 13 * * 5`
+- **Time**: Every Friday at 1:00 PM UTC
 - **Actions**:
-  - Unpins all previous messages
-  - Selects Fire Chief and Backup
-  - Creates Notion roster entry
-  - Posts and pins messages to Slack
+  - Selects Fire Chief and Backup for following Monday
+  - Creates Notion roster entry and increments Chief Count
+  - Posts messages to Slack
+  - Sets channel topics with Fire Chief mention
+  - Sends handover coordination message to internal channel
+  - Notifies both outgoing and incoming chiefs
 
-### Friday Reminder
+### Monday Reminder
 
-- **Cron**: `0 15 * * 5`
-- **Time**: Every Friday at 3:00 PM UTC
+- **Cron**: `0 7 * * 1`
+- **Time**: Every Monday at 7:00 AM UTC
 - **Actions**:
   - Finds current week's Fire Chief
-  - Sends handover reminder
-  - Pins the reminder message
+  - Sends welcome reminder with responsibilities checklist
+  - Sets channel topic with Fire Chief mention
 
 ### Adjusting Schedule
 
@@ -217,7 +220,7 @@ on:
 
 ### Workflow fails with "missing_scope"
 
-- Ensure Slack bot has all required scopes (`chat:write`, `pins:write`)
+- Ensure Slack bot has all required scopes (`chat:write`, `channels:write`, `groups:write`)
 - Go to **OAuth & Permissions** in Slack app settings
 - Reinstall the app to workspace after adding scopes
 

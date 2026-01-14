@@ -17,10 +17,12 @@ Fire Chief is a **weekly support rotation role** where one team member acts as t
 ## Features
 
 - **Fair Rotation**: Automatically selects Fire Chief based on whom served least recently
+- **Occurrence Tracking**: Tracks total times each person has served for equitable distribution
 - **Volunteer System**: Team members can volunteer for specific weeks
-- **Slack Integration**: Posts announcements and pins messages automatically
+- **Slack Integration**: Posts announcements and sets channel topics with current Fire Chief
 - **Notion Tracking**: Maintains a history of assignments in structured databases
-- **Reminders**: Sends Friday handover reminders to current Fire Chief
+- **Handover Coordination**: Notifies outgoing and incoming chiefs for smooth transitions
+- **Monday Reminders**: Sends welcome message to new Fire Chief at start of week
 - **GitHub Actions**: Fully automated via scheduled workflows
 
 ## Documentation
@@ -40,18 +42,20 @@ Fire Chief is a **weekly support rotation role** where one team member acts as t
 
 ## How It Works
 
-**Every Monday at 8:00 AM UTC:**
+**Every Friday at 1:00 PM UTC:**
 
-1. Bot selects the next Fire Chief and Backup
-2. Creates entry in Notion Weekly Roster
+1. Bot selects the next Fire Chief and Backup for the following Monday
+2. Creates entry in Notion Weekly Roster and increments Chief Count
 3. Posts announcements to Slack channels
-4. Pins messages for visibility
+4. Sets channel topics to show current Fire Chief
+5. Sends handover coordination message to internal channel
+6. Notifies both outgoing and incoming chiefs
 
-**Every Friday at 3:00 PM UTC:**
+**Every Monday at 7:00 AM UTC:**
 
-1. Sends a handover reminder to current Fire Chief
-2. Prompts preparation of handover notes
-3. Pins reminder message
+1. Sends a welcome reminder to the newly assigned Fire Chief
+2. Includes checklist of weekly responsibilities
+3. Sets channel topic with current Fire Chief mention
 
 ## Architecture
 
@@ -60,8 +64,8 @@ GitHub Actions (Scheduled Workflows)
     ↓
 .NET Console Application
     ↓
-    ├── Notion API (Read team roster, write assignments)
-    └── Slack API (Post messages, pin announcements)
+    ├── Notion API (Read team roster, write assignments, track counts)
+    └── Slack API (Post messages, set channel topics)
 ```
 
 **Tech Stack:**

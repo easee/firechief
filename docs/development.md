@@ -21,6 +21,7 @@ Create a Notion database with the following properties:
 | **Active** | Checkbox | Whether member is eligible for rotation |
 | **Volunteer** | Checkbox | Set by member to volunteer for next week |
 | **Recent Chief Date** | Date | Last time this person was Fire Chief |
+| **Chief Count** | Number | Total number of times served as Fire Chief |
 
 **Sample entry:**
 - Name: `Alice Johnson`
@@ -28,6 +29,7 @@ Create a Notion database with the following properties:
 - Active: ✅
 - Volunteer: ☐
 - Recent Chief Date: `2025-12-09`
+- Chief Count: `5`
 
 **Getting your Team Database ID:**
 1. Open the database as a full page in Notion
@@ -92,9 +94,9 @@ Go to **OAuth & Permissions** and add these Bot Token Scopes:
 
 - `chat:write` - Post messages
 - `chat:write.public` - Post in channels bot isn't a member of
-- `pins:write` - Pin messages
-- `channels:history` - Read channel message history (for pinning)
-- `groups:history` - Read private channel history (if using private channels)
+- `channels:write` - Set channel topics in public channels
+- `groups:write` - Set channel topics in private channels
+- `users:read` - Read user information for mentions
 
 ### Install Bot to Workspace
 
@@ -181,7 +183,7 @@ dotnet restore
 
 ### Run Assignment Workflow
 
-Test the Monday assignment workflow:
+Test the Friday assignment workflow:
 
 ```bash
 # Ensure DOTNET_ENVIRONMENT is set
@@ -192,23 +194,24 @@ dotnet run -- assign
 ```
 
 Expected behavior:
-- Selects a Fire Chief and Backup from your team database
-- Creates a roster entry in Notion
+- Selects a Fire Chief and Backup from your team database for next Monday
+- Creates a roster entry in Notion and increments Chief Count
 - Posts messages to both Slack channels
-- Pins the messages
+- Sets channel topics with Fire Chief mention
+- Sends handover coordination message to internal channel
 
-### Run Friday Reminder
+### Run Monday Reminder
 
-Test the Friday reminder:
+Test the Monday reminder:
 
 ```bash
-dotnet run -- remind-friday
+dotnet run -- remind-monday
 ```
 
 Expected behavior:
 - Finds the current week's assignment
-- Sends handover reminder to Fire Chief via DM
-- Pins the reminder
+- Sends welcome reminder to Fire Chief in internal channel
+- Sets channel topic with Fire Chief mention
 
 ### View Available Commands
 
